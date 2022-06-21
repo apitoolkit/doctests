@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"go/doc"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -11,12 +10,12 @@ import (
 	"strings"
 
 	"github.com/kr/pretty"
+	"github.com/spf13/cobra"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
 )
 
-func ParseComments() {
-	rootPath := "../doctester/"
+func ParseComments(rootPath string) {
 	fset := token.NewFileSet() // positions are relative to fset
 	d, err := parser.ParseDir(fset, rootPath, nil, parser.ParseComments)
 	if err != nil {
@@ -32,12 +31,7 @@ func ParseComments() {
 
 	for pkgName, packageNode := range d {
 		_ = pkgName
-		_ = packageNode
 		for fileName, astFile := range packageNode.Files {
-			// fmt.Println(fileName)
-			_ = fileName
-			_ = astFile
-
 			// Evaluate the current file so that the comments can refer to the package
 			_, err := intp.EvalPath(strings.Split(fileName, rootPath)[1])
 			if err != nil {
@@ -71,9 +65,9 @@ func ParseComments() {
 				}
 			}
 
-			// pretty.Println(astFile)
 			var buf bytes.Buffer
-			if err := format.Node(&buf, fset, astFile); err != nil {
+			err = format.Node(&buf, fset, astFile)
+			if err != nil {
 				panic(err)
 			}
 
@@ -87,94 +81,19 @@ func ParseComments() {
 	}
 }
 
-func ParseComments2() {
-	fset := token.NewFileSet() // positions are relative to fset
-	d, err := parser.ParseDir(fset, "../doctester/", nil, parser.ParseComments)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	for k, packageNode := range d {
-		fmt.Println("package", k)
-		p := doc.New(packageNode, "../doctester/", 3)
-
-		pretty.Println(p)
-		for _, t := range p.Types {
-			fmt.Println("type", t.Name)
-			fmt.Println("docs:", t.Doc)
-
-			docs := strings.Split(t.Doc, "\n")
-			pretty.Println("🔥", docs)
-		}
-
-		for _, v := range p.Vars {
-			fmt.Println("type", v.Names)
-			fmt.Println("docs:", v.Doc)
-		}
-
-		for _, f := range p.Funcs {
-			fmt.Println("type", f.Name)
-			fmt.Println("docs:", f.Doc)
-
-			docs := strings.Split(f.Doc, "\n")
-			pretty.Println("🔥", docs)
-
-			for i, v := range docs {
-				_ = i
-				if strings.HasPrefix(">>>", v) {
-					cmd := strings.TrimPrefix(">>>", v)
-					_ = cmd
-					// f.Dec
-					fs := os.DirFS("../doctester/")
-					// cacheDir, err := os.UserCacheDir()
-					// if err != nil {
-					// 	fmt.Println("cacheDir", err)
-					// }
-
-					intp := interp.New(interp.Options{
-						GoPath: os.Getenv("GOPATH"),
-						// GoCache: cacheDir,
-						// GoPath:               "/Users/tonyalaribe/go/",
-						SourcecodeFilesystem: fs,
-						// GoToolDir:            build.ToolDir,
-						// Stdout:               &stdout, Stderr: &stderr,
-						// Unrestricted:         true,
-					})
-					if err != nil {
-						fmt.Println(err)
-					}
-
-					intp.Use(stdlib.Symbols)
-
-					exports := intp.Symbols("/Users/tonyalaribe/Projects/doctester/")
-					pretty.Println("Exports", exports)
-
-					_ = intp
-					intp.ImportUsed()
-
-					_, err := intp.EvalPath("dc.go")
-					if err != nil {
-						fmt.Println("error ", err)
-					}
-
-					r, err := intp.Eval("doctester.AddTest()")
-					if err != nil {
-						fmt.Println("error ", err)
-					}
-
-					fmt.Println(fmt.Sprint(r))
-
-				}
-			}
-		}
-
-		for _, n := range p.Notes {
-			fmt.Println("body", n[0].Body)
-		}
-	}
-}
-
 func main() {
-	ParseComments()
+	rootCmd := &cobra.Command{
+		Use:   "doctest",
+		Short: "Doctest will execute doctest blocks in your comments and update their results",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("ARGS", args)
+			pretty.Println(cmd)
+			rootPath := "."
+			if len(args) > 0 {
+				rootPath = args[0]
+			}
+			ParseComments(rootPath)
+		},
+	}
+	rootCmd.Execute()
 }
