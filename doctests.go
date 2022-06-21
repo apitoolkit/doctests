@@ -1,29 +1,93 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
-	// "go/build"
 	"go/doc"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
 	"strings"
 
 	"github.com/kr/pretty"
-	// "github.com/switchupcb/yaegi/interp"
-	// "github.com/switchupcb/yaegi/stdlib"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
 )
 
-// >>> AddTest
-// -- 3
-func AddTest() int {
-	return 2 + 3
+func ParseComments() {
+	rootPath := "../doctester/"
+	fset := token.NewFileSet() // positions are relative to fset
+	d, err := parser.ParseDir(fset, rootPath, nil, parser.ParseComments)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	intp := interp.New(interp.Options{
+		GoPath:               os.Getenv("GOPATH"),
+		SourcecodeFilesystem: os.DirFS(rootPath),
+	})
+	intp.Use(stdlib.Symbols)
+
+	for pkgName, packageNode := range d {
+		_ = pkgName
+		_ = packageNode
+		for fileName, astFile := range packageNode.Files {
+			// fmt.Println(fileName)
+			_ = fileName
+			_ = astFile
+
+			// Evaluate the current file so that the comments can refer to the package
+			_, err := intp.EvalPath(strings.Split(fileName, rootPath)[1])
+			if err != nil {
+				panic(err)
+			}
+			for _, comment := range astFile.Comments {
+				pretty.Println(comment)
+				for currCommentLineIndex, commentLine := range comment.List {
+					if strings.HasPrefix(commentLine.Text, "// >>>") {
+						expr := strings.TrimPrefix(commentLine.Text, "// >>> ")
+						resp, err := intp.Eval(expr)
+						if err != nil {
+							panic(err)
+						}
+						newRespValue := fmt.Sprint(resp)
+						nextLineResponse := "// " + newRespValue
+						fmt.Println("RESP=", nextLineResponse)
+
+						if len(comment.List) > (currCommentLineIndex + 1) {
+							nextCommentLine := comment.List[currCommentLineIndex+1]
+							if nextCommentLine.Text == nextLineResponse {
+								continue
+							}
+							oldValue := strings.TrimPrefix(nextCommentLine.Text, "// ")
+							nextCommentLine.Text = fmt.Sprintf("// WAS %s \n // NOW %s", oldValue, newRespValue)
+						} else {
+							// Last comment line
+							commentLine.Text = commentLine.Text + "\n" + nextLineResponse
+						}
+					}
+				}
+			}
+
+			// pretty.Println(astFile)
+			var buf bytes.Buffer
+			if err := format.Node(&buf, fset, astFile); err != nil {
+				panic(err)
+			}
+
+			fmt.Printf("%s", buf.Bytes())
+
+			err = os.WriteFile(fileName, buf.Bytes(), 0666)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 }
 
-// ParseComments xxx
-func ParseComments() {
+func ParseComments2() {
 	fset := token.NewFileSet() // positions are relative to fset
 	d, err := parser.ParseDir(fset, "../doctester/", nil, parser.ParseComments)
 	if err != nil {
@@ -33,11 +97,7 @@ func ParseComments() {
 
 	for k, packageNode := range d {
 		fmt.Println("package", k)
-		p := doc.New(packageNode, "../doctester/", 2)
-		// p.Filter(doc.Filter(func(s string) bool {
-		// 	fmt.Println("🔥", s)
-		// 	return strings.HasPrefix(s, ">>>")
-		// }))
+		p := doc.New(packageNode, "../doctester/", 3)
 
 		pretty.Println(p)
 		for _, t := range p.Types {
@@ -46,7 +106,6 @@ func ParseComments() {
 
 			docs := strings.Split(t.Doc, "\n")
 			pretty.Println("🔥", docs)
-
 		}
 
 		for _, v := range p.Vars {
@@ -88,32 +147,23 @@ func ParseComments() {
 
 					intp.Use(stdlib.Symbols)
 
+					exports := intp.Symbols("/Users/tonyalaribe/Projects/doctester/")
+					pretty.Println("Exports", exports)
+
 					_ = intp
 					intp.ImportUsed()
 
-					// prog, err := intp.CompileAST(packageNode)
-					// if err != nil {
-					// 	fmt.Println("error compile AST ", err)
-					// }
-					// _ = prog
-
-					// r, err := intp.Eval("fmt.Println(\"hello world \")")
-					r, err := intp.Eval("fmt.Println(\"hello world \")")
-					if err != nil {
-						fmt.Println("error ", err)
-					}
-					pretty.Println("RESP bla bla", r)
-
-					_, err = intp.EvalPath("./")
+					_, err := intp.EvalPath("dc.go")
 					if err != nil {
 						fmt.Println("error ", err)
 					}
 
-					r, err = intp.Eval("AddTest()")
+					r, err := intp.Eval("doctester.AddTest()")
 					if err != nil {
 						fmt.Println("error ", err)
 					}
-					_ = r
+
+					fmt.Println(fmt.Sprint(r))
 
 				}
 			}
