@@ -38,7 +38,6 @@ func ParseComments(rootPath string) {
 				panic(err)
 			}
 			for _, comment := range astFile.Comments {
-				pretty.Println(comment)
 				for currCommentLineIndex, commentLine := range comment.List {
 					if strings.HasPrefix(commentLine.Text, "// >>>") {
 						expr := strings.TrimPrefix(commentLine.Text, "// >>> ")
@@ -48,7 +47,6 @@ func ParseComments(rootPath string) {
 						}
 						newRespValue := fmt.Sprint(resp)
 						nextLineResponse := "// " + newRespValue
-						fmt.Println("RESP=", nextLineResponse)
 
 						if len(comment.List) > (currCommentLineIndex + 1) {
 							nextCommentLine := comment.List[currCommentLineIndex+1]

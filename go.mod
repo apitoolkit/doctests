@@ -1,4 +1,4 @@
-module github.com/apitoolkit/doctest
+module github.com/apitoolkit/doctests
 
 go 1.18
 
