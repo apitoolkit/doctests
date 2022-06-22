@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kr/pretty"
@@ -15,7 +16,28 @@ import (
 	"github.com/traefik/yaegi/stdlib"
 )
 
-func ParseComments(rootPath string) {
+func ParseCommentForFileGlob(files []string) {
+	pathToFiles := map[string][]string{}
+	for _, f := range files {
+		dir := filepath.Dir(f)
+		base := filepath.Base(f)
+		existingL, exists := pathToFiles[dir]
+		if exists {
+			existingL = append(existingL, base)
+			pathToFiles[dir] = existingL
+		} else {
+			pathToFiles[dir] = []string{base}
+		}
+	}
+	for k, v := range pathToFiles {
+		ParseComments(k, v)
+	}
+}
+
+func ParseComments(rootPath string, files []string) {
+	if rootPath == "." {
+		rootPath = "./"
+	}
 	fset := token.NewFileSet() // positions are relative to fset
 	d, err := parser.ParseDir(fset, rootPath, nil, parser.ParseComments)
 	if err != nil {
@@ -34,8 +56,14 @@ func ParseComments(rootPath string) {
 		for fileName, astFile := range packageNode.Files {
 			// Evaluate the current file so that the comments can refer to the package
 			pretty.Println(strings.Split(fileName, rootPath), fileName, rootPath)
-			// _, err := intp.EvalPath(strings.Split(fileName, rootPath)[1])
-			_, err := intp.EvalPath("dc.go")
+
+			fileToEvalList := strings.Split(fileName, rootPath)
+			fileToEval := fileToEvalList[0]
+			if len(fileToEvalList) > 1 {
+				fileToEval = fileToEvalList[1]
+			}
+
+			_, err := intp.EvalPath(fileToEval)
 			if err != nil {
 				panic(err)
 			}
@@ -87,13 +115,7 @@ func main() {
 		Use:   "doctest",
 		Short: "Doctest will execute doctest blocks in your comments and update their results",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("ARGS", args)
-			pretty.Println(cmd)
-			rootPath := "."
-			if len(args) > 0 {
-				rootPath = args[0]
-			}
-			ParseComments(rootPath)
+			ParseCommentForFileGlob(args)
 		},
 	}
 	rootCmd.Execute()
