@@ -33,10 +33,13 @@ func ParseComments(rootPath string) {
 		_ = pkgName
 		for fileName, astFile := range packageNode.Files {
 			// Evaluate the current file so that the comments can refer to the package
-			_, err := intp.EvalPath(strings.Split(fileName, rootPath)[1])
+			pretty.Println(strings.Split(fileName, rootPath), fileName, rootPath)
+			// _, err := intp.EvalPath(strings.Split(fileName, rootPath)[1])
+			_, err := intp.EvalPath("dc.go")
 			if err != nil {
 				panic(err)
 			}
+
 			for _, comment := range astFile.Comments {
 				for currCommentLineIndex, commentLine := range comment.List {
 					if strings.HasPrefix(commentLine.Text, "// >>>") {
