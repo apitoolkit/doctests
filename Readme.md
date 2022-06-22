@@ -10,7 +10,7 @@ It is similar in spirit to the [popular Python module with the same name](https:
 You can install Doctests via go modules via:
 
 ```go
-go install github.com/apitoolkit/doctests
+go install github.com/apitoolkit/doctests@latest
 ```
 
 ### Running Doctest

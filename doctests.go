@@ -10,13 +10,41 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gookit/color"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
 )
 
-func ParseCommentForFileGlob(files []string) {
+type ReportItem struct {
+	Expr     string
+	Failed   bool
+	Previous string
+	Current  string
+}
+
+func ParseCommentsForFileGlob(files []string) {
+	reports := ParseCommentForFileGlob2(files)
+	var failed bool
+	for _, r := range reports {
+		fmt.Printf("// >>> %s\n", r.Expr)
+		if r.Failed {
+			failed = true
+			color.Error.Printf("// WAS %s\n// NOW %s", r.Previous, r.Current)
+		} else {
+			fmt.Printf("// %s\n", r.Current)
+		}
+		fmt.Println("\n\n")
+	}
+	if failed {
+		color.Error.Println("DOCTESTS FAILED")
+	} else {
+		color.Green.Println("DOCTESTS SUCCEEDED WITH NO FAILURES")
+	}
+}
+
+func ParseCommentForFileGlob2(files []string) []ReportItem {
 	pathToFiles := map[string][]string{}
 	for _, f := range files {
 		dir := filepath.Dir(f)
@@ -29,20 +57,24 @@ func ParseCommentForFileGlob(files []string) {
 			pathToFiles[dir] = []string{base}
 		}
 	}
+	reports := []ReportItem{}
 	for k, v := range pathToFiles {
-		ParseComments(k, v)
+		reports_ := ParseComments(k, v)
+		reports = append(reports, reports_...)
 	}
+	return reports
 }
 
-func ParseComments(rootPath string, files []string) {
+func ParseComments(rootPath string, files []string) []ReportItem {
+	reports := []ReportItem{}
+
 	if rootPath == "." {
 		rootPath = "./"
 	}
 	fset := token.NewFileSet() // positions are relative to fset
 	d, err := parser.ParseDir(fset, rootPath, nil, parser.ParseComments)
 	if err != nil {
-		fmt.Println(err)
-		return
+		panic(err)
 	}
 
 	intp := interp.New(interp.Options{
@@ -58,11 +90,12 @@ func ParseComments(rootPath string, files []string) {
 			pretty.Println(strings.Split(fileName, rootPath), fileName, rootPath)
 
 			fileToEvalList := strings.Split(fileName, rootPath)
-			fileToEval := fileToEvalList[0]
+			fileToEval := filepath.Base(fileToEvalList[0])
 			if len(fileToEvalList) > 1 {
-				fileToEval = fileToEvalList[1]
+				fileToEval = filepath.Base(fileToEvalList[1])
 			}
 
+			fmt.Println("FILE TO EVAL", fileToEval)
 			_, err := intp.EvalPath(fileToEval)
 			if err != nil {
 				panic(err)
@@ -70,27 +103,37 @@ func ParseComments(rootPath string, files []string) {
 
 			for _, comment := range astFile.Comments {
 				for currCommentLineIndex, commentLine := range comment.List {
-					if strings.HasPrefix(commentLine.Text, "// >>>") {
-						expr := strings.TrimPrefix(commentLine.Text, "// >>> ")
-						resp, err := intp.Eval(expr)
-						if err != nil {
-							panic(err)
-						}
-						newRespValue := fmt.Sprint(resp)
-						nextLineResponse := "// " + newRespValue
-
-						if len(comment.List) > (currCommentLineIndex + 1) {
-							nextCommentLine := comment.List[currCommentLineIndex+1]
-							if nextCommentLine.Text == nextLineResponse {
-								continue
-							}
-							oldValue := strings.TrimPrefix(nextCommentLine.Text, "// ")
-							nextCommentLine.Text = fmt.Sprintf("// WAS %s \n // NOW %s", oldValue, newRespValue)
-						} else {
-							// Last comment line
-							commentLine.Text = commentLine.Text + "\n" + nextLineResponse
-						}
+					if !strings.HasPrefix(commentLine.Text, "// >>>") {
+						continue
 					}
+
+					report := ReportItem{}
+
+					expr := strings.TrimPrefix(commentLine.Text, "// >>> ")
+					report.Expr = expr
+
+					resp, err := intp.Eval(expr)
+					if err != nil {
+						panic(err)
+					}
+
+					report.Current = fmt.Sprint(resp)
+					nextLineResponse := "// " + report.Current
+
+					if len(comment.List) > (currCommentLineIndex + 1) {
+						nextCommentLine := comment.List[currCommentLineIndex+1]
+						if nextCommentLine.Text == nextLineResponse {
+							continue
+						}
+						report.Previous = strings.TrimPrefix(nextCommentLine.Text, "// ")
+						report.Failed = true
+						nextCommentLine.Text = fmt.Sprintf("// WAS %s \n // NOW %s", report.Previous, report.Current)
+					} else {
+						// Last comment line
+						commentLine.Text = commentLine.Text + "\n" + nextLineResponse
+					}
+
+					reports = append(reports, report)
 				}
 			}
 
@@ -100,7 +143,7 @@ func ParseComments(rootPath string, files []string) {
 				panic(err)
 			}
 
-			fmt.Printf("%s", buf.Bytes())
+			// fmt.Printf("%s", buf.Bytes())
 
 			err = os.WriteFile(fileName, buf.Bytes(), 0666)
 			if err != nil {
@@ -108,6 +151,7 @@ func ParseComments(rootPath string, files []string) {
 			}
 		}
 	}
+	return reports
 }
 
 func main() {
@@ -115,7 +159,7 @@ func main() {
 		Use:   "doctest",
 		Short: "Doctest will execute doctest blocks in your comments and update their results",
 		Run: func(cmd *cobra.Command, args []string) {
-			ParseCommentForFileGlob(args)
+			ParseCommentsForFileGlob(args)
 		},
 	}
 	rootCmd.Execute()
