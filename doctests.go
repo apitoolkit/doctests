@@ -2,20 +2,56 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"flag"
 	"fmt"
 	"go/format"
 	"go/parser"
 	"go/token"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/TobiasYin/go-lsp/logs"
+	"github.com/TobiasYin/go-lsp/lsp"
+	"github.com/TobiasYin/go-lsp/lsp/defines"
 	"github.com/gookit/color"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
 )
+
+func strPtr(str string) *string {
+	return &str
+}
+
+var logPath *string
+
+func init() {
+	var logger *log.Logger
+	defer func() {
+		logs.Init(logger)
+	}()
+	logPath = flag.String("logs", "", "logs file path")
+	if logPath == nil || *logPath == "" {
+		logger = log.New(os.Stderr, "", 0)
+		return
+	}
+	p := *logPath
+	f, err := os.Open(p)
+	if err == nil {
+		logger = log.New(f, "", 0)
+		return
+	}
+	f, err = os.Create(p)
+	if err == nil {
+		logger = log.New(f, "", 0)
+		return
+	}
+	panic(fmt.Sprintf("logs init error: %v", *logPath))
+}
 
 type ReportItem struct {
 	Expr     string
@@ -162,5 +198,28 @@ func main() {
 			ParseCommentsForFileGlob(args)
 		},
 	}
+	lspCmd := &cobra.Command{
+		Use:   "lsp",
+		Short: "startup the lsp server",
+		Run: func(cmd *cobra.Command, args []string) {
+			server := lsp.NewServer(
+				&lsp.Options{
+					CompletionProvider: &defines.CompletionOptions{
+						TriggerCharacters: &[]string{"."},
+					},
+					Network: "tcp",
+				},
+			)
+
+			server.OnDidSaveTextDocument(func(ctx context.Context, req *defines.DidSaveTextDocumentParams) (err error) {
+				str := strings.Replace((string)(req.TextDocument.Uri), "file://", "", 1)
+				ParseCommentsForFileGlob([]string{str})
+				return nil
+			})
+
+			server.Run()
+		},
+	}
+	rootCmd.AddCommand(lspCmd)
 	rootCmd.Execute()
 }
