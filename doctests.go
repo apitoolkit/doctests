@@ -2,21 +2,15 @@ package main
 
 import (
 	"bytes"
-	"context"
-	"flag"
 	"fmt"
 	"go/format"
 	"go/parser"
 	"go/token"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/TobiasYin/go-lsp/logs"
-	"github.com/TobiasYin/go-lsp/lsp"
-	"github.com/TobiasYin/go-lsp/lsp/defines"
 	"github.com/gookit/color"
 	"github.com/kr/pretty"
 	"github.com/samber/lo"
@@ -37,32 +31,6 @@ func strPtr(str string) *string {
 }
 
 var logPath *string
-
-func init() {
-	// -----
-	var logger *log.Logger
-	defer func() {
-		logs.Init(logger)
-	}()
-	logPath = flag.String("logs", "", "logs file path")
-	// logPath = strPtr("~/doctest.log")
-	if logPath == nil || *logPath == "" {
-		logger = log.New(os.Stderr, "", 0)
-		return
-	}
-	p := *logPath
-	f, err := os.Open(p)
-	if err == nil {
-		logger = log.New(f, "", 0)
-		return
-	}
-	f, err = os.Create(p)
-	if err == nil {
-		logger = log.New(f, "", 0)
-		return
-	}
-	panic(fmt.Sprintf("logs init error: %v", *logPath))
-}
 
 type ReportItem struct {
 	Expr     string
@@ -288,16 +256,6 @@ func main() {
 				Initialized: initialized,
 				Shutdown:    shutdown,
 				SetTrace:    setTrace,
-				TextDocumentDidSave: func(context *glsp.Context, params *protocol.DidSaveTextDocumentParams) error {
-					// if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
-					// 	m.Set("message", "Did Save").
-					// 		Set("req", pretty.Sprint(params)).
-					// 		Send()
-					// }
-					// str := strings.Replace((string)(params.TextDocument.URI), "file://", "", 1)
-					// ParseCommentsForFileGlob2([]string{str})
-					return nil
-				},
 				TextDocumentCodeLens: func(context *glsp.Context, params *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
 					if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
 						m.Set("message", "CodeLens").
@@ -351,42 +309,10 @@ func main() {
 			}
 
 			server := server.NewServer(&handler, lsName, true)
-
 			server.RunStdio()
 		},
 	}
 
-	lspCmd2 := &cobra.Command{
-		Use:   "lsp2",
-		Short: "startup the lsp server",
-		Run: func(cmd *cobra.Command, args []string) {
-			server := lsp.NewServer(
-				&lsp.Options{
-					CompletionProvider: &defines.CompletionOptions{
-						TriggerCharacters: &[]string{"."},
-					},
-					// Network: "tcp",
-				},
-			)
-
-			// server.OnWillSaveTextDocument(func(ctx context.Context, req *defines.WillSaveTextDocumentParams) (err error) {
-			// 	// fmt.Println("🔥 WILL SAVE CALLED")
-			// 	str := strings.Replace((string)(req.TextDocument.Uri), "file://", "", 1)
-			// 	ParseCommentsForFileGlob2([]string{str})
-			// 	return nil
-			// })
-
-			server.OnDidSaveTextDocument(func(ctx context.Context, req *defines.DidSaveTextDocumentParams) (err error) {
-				// fmt.Println("🔥 DID SAVE CALLED")
-				str := strings.Replace((string)(req.TextDocument.Uri), "file://", "", 1)
-				ParseCommentsForFileGlob2([]string{str})
-				return nil
-			})
-
-			server.Run()
-		},
-	}
-	rootCmd.AddCommand(lspCmd2)
 	rootCmd.AddCommand(lspCmd)
 	rootCmd.Execute()
 }
@@ -552,21 +478,7 @@ func resolveEditCodeAction(ca *protocol.CodeAction) *protocol.CodeAction {
 
 					textEdits = append(textEdits, tE)
 				}
-
-				// end := fset.Position(comment.End())
 			}
-
-			// pos := fset.Position(comment.Pos())
-			// end := fset.Position(comment.End())
-			// severity := protocol.DiagnosticSeverityHint
-			// code := protocol.IntegerOrString{Value: protocol.Integer(1)}
-			// kind := protocol.CodeActionKind("QuickFix")
-
-			// Command: &protocol.Command{
-			// 	Title:     commandTitle,
-			// 	Command:   "codelens.evaluate",
-			// 	Arguments: []interface{}{file},
-			// },
 		}
 	}
 	edit := protocol.WorkspaceEdit{
