@@ -13,7 +13,6 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/kr/pretty"
-	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"github.com/tliron/glsp"
 	protocol "github.com/tliron/glsp/protocol_3_16"
@@ -135,7 +134,6 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 					nextLineResponse := "// " + report.Current
 
 					if len(comment.List) <= (currCommentLineIndex + 1) {
-						// Last comment line
 						commentLine.Text = commentLine.Text + "\n" + nextLineResponse
 						reports = append(reports, report)
 						continue
@@ -172,9 +170,7 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 				panic(err)
 			}
 
-			// fmt.Printf("%s", buf.Bytes())
-
-			err = os.WriteFile(fileName, buf.Bytes(), 0666)
+			err = os.WriteFile(fileName, buf.Bytes(), 0o666)
 			if err != nil {
 				panic(err)
 			}
@@ -189,54 +185,16 @@ var (
 	handler protocol.Handler
 )
 
-func initialize(context *glsp.Context, params *protocol.InitializeParams) (interface{}, error) {
-	protocol.SetTraceValue(protocol.TraceValueVerbose)
-
-	capabilities := handler.CreateServerCapabilities()
-	t := true
-	cc := protocol.CodeActionOptions{
-		CodeActionKinds: []string{"QuickFix"},
-		ResolveProvider: &t,
-	}
-	cc.WorkDoneProgress = &t
-
-	capabilities.CodeActionProvider = cc
-
-	capabilities.CodeLensProvider.ResolveProvider = &t
-	capabilities.CodeLensProvider.WorkDoneProgress = &t
-
-	capabilities.ExecuteCommandProvider.Commands = append(capabilities.ExecuteCommandProvider.Commands, "codelens.evaluate")
-	capabilities.ExecuteCommandProvider.WorkDoneProgress = &t
-
-	result := protocol.InitializeResult{
-		Capabilities: capabilities,
-		ServerInfo: &protocol.InitializeResultServerInfo{
-			Name:    lsName,
-			Version: &version,
-		},
-	}
-	if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
-		m.Set("message", "Initialize").
-			Set("req", pretty.Sprint(result)).
-			Set("params", pretty.Sprint(params)).
-			Send()
-	}
-	return result, nil
-}
-
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "doctest",
 		Short: "Doctest will execute doctest blocks in your comments and update their results",
-		Run: func(cmd *cobra.Command, args []string) {
-			ParseCommentsForFileGlob(args)
-		},
 	}
 
 	fmtCmd := &cobra.Command{
 		Use:   "fmt",
 		Short: "fmt",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, args []string) {
 			ParseCommentsForFileGlob(args)
 		},
 	}
@@ -248,50 +206,46 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			const lsName = "doctests"
 			backend := simple.NewBackend()
-			backend.Configure(1, strPtr("/Users/tonyalaribe/doctest.log"))
+			backend.Configure(1, nil)
 			logging.SetBackend(backend)
 
 			handler = protocol.Handler{
-				Initialize:  initialize,
-				Initialized: initialized,
-				Shutdown:    shutdown,
-				SetTrace:    setTrace,
-				TextDocumentCodeLens: func(context *glsp.Context, params *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
-					if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
-						m.Set("message", "CodeLens").
-							Set("req", pretty.Sprint(params)).
-							Send()
+				Initialize: func(context *glsp.Context, params *protocol.InitializeParams) (interface{}, error) {
+					protocol.SetTraceValue(protocol.TraceValueVerbose)
+
+					capabilities := handler.CreateServerCapabilities()
+					t := true
+
+					capabilities.CodeLensProvider.ResolveProvider = &t
+					// capabilities.CodeLensProvider.WorkDoneProgress = &t
+
+					capabilities.ExecuteCommandProvider.Commands = append(capabilities.ExecuteCommandProvider.Commands, "codelens.evaluate")
+					// capabilities.ExecuteCommandProvider.WorkDoneProgress = &t
+
+					result := protocol.InitializeResult{
+						Capabilities: capabilities,
+						ServerInfo: &protocol.InitializeResultServerInfo{
+							Name:    lsName,
+							Version: &version,
+						},
 					}
+					return result, nil
+				},
+				Initialized: func(context *glsp.Context, params *protocol.InitializedParams) error {
+					// context.Notify(protocol.ServerWorkspaceCodeLensRefresh, nil)
+					return nil
+				},
+				Shutdown: func(_ *glsp.Context) error {
+					protocol.SetTraceValue(protocol.TraceValueVerbose)
+					return nil
+				},
+				SetTrace: func(_ *glsp.Context, params *protocol.SetTraceParams) error {
+					protocol.SetTraceValue(params.Value)
+					return nil
+				},
+				TextDocumentCodeLens: func(context *glsp.Context, params *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
 					str := strings.Replace((string)(params.TextDocument.URI), "file://", "", 1)
 					return parseFileAndReturnCodeLenses(str), nil
-				},
-				TextDocumentCodeAction: func(context *glsp.Context, params *protocol.CodeActionParams) (interface{}, error) {
-					if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
-						m.Set("message", "CodeAction").
-							Set("req", pretty.Sprint(params)).
-							Send()
-					}
-					str := strings.Replace((string)(params.TextDocument.URI), "file://", "", 1)
-					return parseFileAndReturnCodeActions(str), nil
-				},
-				CodeActionResolve: func(context *glsp.Context, params *protocol.CodeAction) (*protocol.CodeAction, error) {
-					params = resolveEditCodeAction(params)
-					if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
-						m.Set("message", "CodeActionResolve").
-							Set("req", pretty.Sprint(params)).
-							Set("params", pretty.Sprint(params)).
-							Send()
-					}
-
-					return params, nil
-				},
-				CodeLensResolve: func(context *glsp.Context, params *protocol.CodeLens) (*protocol.CodeLens, error) {
-					if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
-						m.Set("message", "CodeLensResolve").
-							Set("req", pretty.Sprint(params)).
-							Send()
-					}
-					return nil, nil
 				},
 				WorkspaceExecuteCommand: func(context *glsp.Context, params *protocol.ExecuteCommandParams) (interface{}, error) {
 					if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
@@ -299,12 +253,20 @@ func main() {
 							Set("req", pretty.Sprint(params)).
 							Send()
 					}
-					// str := strings.Replace((string)(params.TextDocument.URI), "file://", "", 1)
 					if params.Command == "codelens.evaluate" {
-						ParseCommentsForFileGlob2([]string{params.Arguments[0].(string)})
+						edits := resolveLensEdit(params.Arguments[0].(string), params.Arguments[1].(string))
+						if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
+							m.Set("message", "WorkspaceExecuteCommand").
+								Set("edits", pretty.Sprint(edits)).
+								Send()
+						}
+						context.Notify(protocol.ServerWorkspaceApplyEdit, protocol.ApplyWorkspaceEditParams{
+							Label: strPtr("evaluated doctest"),
+							Edit:  edits,
+						})
+						context.Notify(protocol.ServerWorkspaceCodeLensRefresh, nil)
 					}
-					t := "Testing sending a random value"
-					return &t, nil
+					return nil, nil
 				},
 			}
 
@@ -315,20 +277,6 @@ func main() {
 
 	rootCmd.AddCommand(lspCmd)
 	rootCmd.Execute()
-}
-
-func initialized(context *glsp.Context, params *protocol.InitializedParams) error {
-	return nil
-}
-
-func shutdown(context *glsp.Context) error {
-	protocol.SetTraceValue(protocol.TraceValueOff)
-	return nil
-}
-
-func setTrace(context *glsp.Context, params *protocol.SetTraceParams) error {
-	protocol.SetTraceValue(params.Value)
-	return nil
 }
 
 func parseFileAndReturnCodeLenses(file string) []protocol.CodeLens {
@@ -351,18 +299,18 @@ func parseFileAndReturnCodeLenses(file string) []protocol.CodeLens {
 				codeL := protocol.CodeLens{
 					Range: protocol.Range{
 						Start: protocol.Position{
-							Line:      protocol.UInteger(pos.Line),
+							Line:      protocol.UInteger(pos.Line - 1),
 							Character: protocol.UInteger(pos.Column),
 						},
 						End: protocol.Position{
-							Line:      protocol.UInteger(end.Line),
+							Line:      protocol.UInteger(end.Line - 1),
 							Character: protocol.UInteger(end.Column),
 						},
 					},
 					Command: &protocol.Command{
 						Title:     commandTitle,
 						Command:   "codelens.evaluate",
-						Arguments: []interface{}{file, comment.Text},
+						Arguments: []interface{}{file, comment.Text, strings.TrimPrefix(comment.Text, "// >>> ")},
 					},
 				}
 				codelenses = append(codelenses, codeL)
@@ -372,66 +320,7 @@ func parseFileAndReturnCodeLenses(file string) []protocol.CodeLens {
 	return codelenses
 }
 
-func parseFileAndReturnCodeActions(file string) []protocol.CodeAction {
-	fset := token.NewFileSet() // positions are relative to fset
-	d, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
-	if err != nil {
-		panic(err)
-	}
-	codelenses := []protocol.CodeAction{}
-	for _, commentG := range d.Comments {
-		for idx, comment := range commentG.List {
-			if strings.HasPrefix(comment.Text, "// >>>") {
-				commandTitle := "Evaluate"
-				if len(commentG.List) > idx+1 {
-					commandTitle = "Refresh"
-				}
-
-				pos := fset.Position(comment.Pos())
-				end := fset.Position(comment.End())
-				severity := protocol.DiagnosticSeverityHint
-				code := protocol.IntegerOrString{Value: protocol.Integer(1)}
-				kind := protocol.CodeActionKind("QuickFix")
-				codeL := protocol.CodeAction{
-					Title: commandTitle,
-					Kind:  &kind,
-					Diagnostics: []protocol.Diagnostic{
-						{
-							Range: protocol.Range{
-								Start: protocol.Position{
-									Line:      protocol.UInteger(pos.Line - 1),
-									Character: protocol.UInteger(pos.Column),
-								},
-								End: protocol.Position{
-									Line:      protocol.UInteger(end.Line - 1),
-									Character: protocol.UInteger(end.Column),
-								},
-							},
-							Source:   strPtr("doctest"),
-							Severity: &severity,
-							Code:     &code,
-							Message:  commandTitle,
-						},
-					},
-					Data: []interface{}{file, comment.Text},
-					// Command: &protocol.Command{
-					// 	Title:     commandTitle,
-					// 	Command:   "codelens.evaluate",
-					// 	Arguments: []interface{}{file},
-					// },
-				}
-				codelenses = append(codelenses, codeL)
-			}
-		}
-	}
-	return codelenses
-}
-
-func resolveEditCodeAction(ca *protocol.CodeAction) *protocol.CodeAction {
-	data := lo.Map(ca.Data.([]interface{}), func(i interface{}, _ int) string {
-		return i.(string)
-	})
-	file := data[0]
+func resolveLensEdit(file string, cmdLine string) protocol.WorkspaceEdit {
 	fset := token.NewFileSet() // positions are relative to fset
 	d, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
 	if err != nil {
@@ -452,17 +341,18 @@ func resolveEditCodeAction(ca *protocol.CodeAction) *protocol.CodeAction {
 	textEdits := []protocol.TextEdit{}
 	for _, commentG := range d.Comments {
 		for idx, comment := range commentG.List {
-			if strings.HasPrefix(comment.Text, "// >>>") && (comment.Text == data[1]) {
-				if len(commentG.List) > idx+1 {
-				} else {
-					pos := fset.Position(comment.Pos())
+			if strings.HasPrefix(comment.Text, "// >>>") && (comment.Text == cmdLine) {
+				pos := fset.Position(comment.Pos())
 
-					expr := strings.TrimPrefix(comment.Text, "// >>> ")
-					resp, err := intp.Eval(expr)
-					if err != nil {
-						panic(err)
-					}
-					resp2 := "// " + fmt.Sprint(resp) + "\n"
+				expr := strings.TrimPrefix(comment.Text, "// >>> ")
+				resp_, err := intp.Eval(expr)
+				if err != nil {
+					panic(err)
+				}
+				resp := fmt.Sprintf("%+v", resp_)
+
+				if len(commentG.List) <= idx+1 || strings.TrimSpace(commentG.List[idx+1].Text) == "//" || strings.TrimSpace(commentG.List[idx+1].Text) == "// -" {
+					resp2 := "// " + resp + "\n"
 
 					start := protocol.Position{
 						Line:      protocol.UInteger(pos.Line),
@@ -477,6 +367,57 @@ func resolveEditCodeAction(ca *protocol.CodeAction) *protocol.CodeAction {
 					}
 
 					textEdits = append(textEdits, tE)
+					continue
+				}
+				nextCommentLine := commentG.List[idx+1]
+				if strings.HasPrefix(nextCommentLine.Text, "// WAS") && len(commentG.List) >= (idx+2) {
+					nowLine := commentG.List[idx+2]
+					if strings.HasPrefix(nowLine.Text, "// NOW ") {
+						pos := fset.Position(nowLine.Pos())
+						start := protocol.Position{
+							Line:      protocol.UInteger(pos.Line - 1),
+							Character: protocol.UInteger(0),
+						}
+
+						end := fset.Position(nowLine.End())
+						tE := protocol.TextEdit{
+							Range: protocol.Range{
+								Start: start,
+								End: protocol.Position{
+									Line:      protocol.UInteger(end.Line - 1),
+									Character: protocol.UInteger(end.Column),
+								},
+							},
+							NewText: "// NOW " + resp,
+						}
+
+						textEdits = append(textEdits, tE)
+					}
+				} else {
+					prev := strings.TrimPrefix(nextCommentLine.Text, "// ")
+					if strings.TrimSpace(prev) == strings.TrimSpace(resp) {
+						continue
+					}
+
+					pos := fset.Position(nextCommentLine.Pos())
+					start := protocol.Position{
+						Line:      protocol.UInteger(pos.Line - 1),
+						Character: protocol.UInteger(0),
+					}
+
+					end := fset.Position(nextCommentLine.End())
+					tE := protocol.TextEdit{
+						Range: protocol.Range{
+							Start: start,
+							End: protocol.Position{
+								Line:      protocol.UInteger(end.Line - 1),
+								Character: protocol.UInteger(end.Column),
+							},
+						},
+						NewText: fmt.Sprintf("// WAS %s \n// NOW %s", prev, resp),
+					}
+
+					textEdits = append(textEdits, tE)
 				}
 			}
 		}
@@ -486,6 +427,5 @@ func resolveEditCodeAction(ca *protocol.CodeAction) *protocol.CodeAction {
 			"file://" + file: textEdits,
 		},
 	}
-	ca.Edit = &edit
-	return ca
+	return edit
 }
