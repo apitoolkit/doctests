@@ -11,15 +11,18 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cosmos72/gomacro/fast"
+	"github.com/cosmos72/gomacro/xreflect"
 	"github.com/gookit/color"
 	"github.com/kr/pretty"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
+	"github.com/switchupcb/yaegi/interp"
+	"github.com/switchupcb/yaegi/stdlib"
 	"github.com/tliron/glsp"
 	protocol "github.com/tliron/glsp/protocol_3_16"
 	"github.com/tliron/glsp/server"
 	"github.com/tliron/kutil/logging"
-	"github.com/traefik/yaegi/interp"
-	"github.com/traefik/yaegi/stdlib"
 
 	// Must include a backend implementation. See kutil's logging/ for other options.
 	simple "github.com/tliron/kutil/logging/simple"
@@ -91,11 +94,13 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 		panic(err)
 	}
 
-	intp := interp.New(interp.Options{
-		GoPath:               os.Getenv("GOPATH"),
-		SourcecodeFilesystem: os.DirFS(rootPath),
-	})
-	intp.Use(stdlib.Symbols)
+	// intp := interp.New(interp.Options{
+	// 	GoPath:               os.Getenv("GOPATH"),
+	// 	SourcecodeFilesystem: os.DirFS(rootPath),
+	// })
+	// intp.Use(stdlib.Symbols)
+	intp := fast.New()
+	intp.ImportPackage(".", rootPath)
 
 	for pkgName, packageNode := range d {
 		_ = pkgName
@@ -103,16 +108,16 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 			// Evaluate the current file so that the comments can refer to the package
 			// pretty.Println(strings.Split(fileName, rootPath), fileName, rootPath)
 
-			fileToEvalList := strings.Split(fileName, rootPath)
-			fileToEval := filepath.Base(fileToEvalList[0])
-			if len(fileToEvalList) > 1 {
-				fileToEval = filepath.Base(fileToEvalList[1])
-			}
+			// fileToEvalList := strings.Split(fileName, rootPath)
+			// fileToEval := filepath.Base(fileToEvalList[0])
+			// if len(fileToEvalList) > 1 {
+			// 	fileToEval = filepath.Base(fileToEvalList[1])
+			// }
 
-			_, err := intp.EvalPath(fileToEval)
-			if err != nil {
-				panic(err)
-			}
+			// _, err := intp.EvalPath(fileToEval)
+			// if err != nil {
+			// 	panic(err)
+			// }
 
 			for _, comment := range astFile.Comments {
 				for currCommentLineIndex, commentLine := range comment.List {
@@ -125,12 +130,20 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 					expr := strings.TrimPrefix(commentLine.Text, "// >>> ")
 					report.Expr = expr
 
-					resp, err := intp.Eval(expr)
-					if err != nil {
-						panic(err)
+					resp, _ := intp.Eval(expr)
+					// if err != nil {
+					// 	panic(err)
+					// }
+
+					report.Current = strings.Join(lo.Map(resp, func(a xreflect.Value, i int) string {
+						return fmt.Sprint(a.ReflectValue())
+					}), ",")
+					if len(resp) > 1 {
+						report.Current = "(" + report.Current + ")"
 					}
 
-					report.Current = fmt.Sprint(resp)
+					// report.Current = fmt.Sprint(resp)
+					fmt.Println(expr, report.Current)
 					nextLineResponse := "// " + report.Current
 
 					if len(comment.List) <= (currCommentLineIndex + 1) {
@@ -328,7 +341,11 @@ func resolveLensEdit(file string, cmdLine string) protocol.WorkspaceEdit {
 	}
 
 	intp := interp.New(interp.Options{
-		GoPath:               os.Getenv("GOPATH"),
+		// GoCache: "/Users/tonyalaribe/Library/Caches/go-build",
+		GoPath: "/Users/tonyalaribe/go",
+		// GoPath:               os.Getenv("GOPATH"),
+		// GoCache:              os.Getenv("GOCACHE"),
+		// GoToolDir:            build.ToolDir,
 		SourcecodeFilesystem: os.DirFS(path.Dir(file)),
 	})
 	intp.Use(stdlib.Symbols)
@@ -337,6 +354,9 @@ func resolveLensEdit(file string, cmdLine string) protocol.WorkspaceEdit {
 	if err != nil {
 		panic(err)
 	}
+
+	// intp := fast.New()
+	// intp.ImportPackage("doctester", path.Dir(file))
 
 	textEdits := []protocol.TextEdit{}
 	for _, commentG := range d.Comments {
@@ -349,6 +369,15 @@ func resolveLensEdit(file string, cmdLine string) protocol.WorkspaceEdit {
 				if err != nil {
 					panic(err)
 				}
+				// resp_, _ := intp.Eval(expr)
+
+				// resp := strings.Join(lo.Map(resp_, func(a xreflect.Value, i int) string {
+				// 	return fmt.Sprint(a.ReflectValue())
+				// }), ",")
+				// if len(resp) > 1 {
+				// 	resp = "(" + resp + ")"
+				// }
+
 				resp := fmt.Sprintf("%+v", resp_)
 
 				if len(commentG.List) <= idx+1 || strings.TrimSpace(commentG.List[idx+1].Text) == "//" || strings.TrimSpace(commentG.List[idx+1].Text) == "// -" {
