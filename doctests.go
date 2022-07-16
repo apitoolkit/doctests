@@ -74,13 +74,13 @@ func ParseCommentsForFileGlob2(files []string) []ReportItem {
 	}
 	reports := []ReportItem{}
 	for k, v := range pathToFiles {
-		reports_ := ParseComments(k, v)
+		reports_ := ParseComments(k, v, &GoMacroInterpreter{})
 		reports = append(reports, reports_...)
 	}
 	return reports
 }
 
-func ParseComments(rootPath string, files []string) []ReportItem {
+func ParseComments(rootPath string, files []string, intp interpreter) []ReportItem {
 	reports := []ReportItem{}
 
 	if rootPath == "." {
@@ -92,25 +92,13 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 		panic(err)
 	}
 
-	intp := interp.New(interp.Options{
-		GoPath:               os.Getenv("GOPATH"),
-		SourcecodeFilesystem: os.DirFS(rootPath),
-	})
-	intp.Use(stdlib.Symbols)
-
 	for pkgName, packageNode := range d {
 		_ = pkgName
 		for fileName, astFile := range packageNode.Files {
 			// Evaluate the current file so that the comments can refer to the package
 			// pretty.Println(strings.Split(fileName, rootPath), fileName, rootPath)
 
-			fileToEvalList := strings.Split(fileName, rootPath)
-			fileToEval := filepath.Base(fileToEvalList[0])
-			if len(fileToEvalList) > 1 {
-				fileToEval = filepath.Base(fileToEvalList[1])
-			}
-
-			_, err := intp.EvalPath(fileToEval)
+			_, err := intp.InitFile(path.Join(rootPath, fileName))
 			if err != nil {
 				panic(err)
 			}
@@ -131,7 +119,7 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 						panic(err)
 					}
 
-					report.Current = fmt.Sprint(resp)
+					report.Current = resp
 					nextLineResponse := "// " + report.Current
 
 					if len(comment.List) <= (currCommentLineIndex + 1) {
@@ -458,6 +446,11 @@ func (y *YaegiInterpreter) InitFile(file string) (interpreter, error) {
 	})
 	intp.Use(stdlib.Symbols)
 
+	// fileToEvalList := strings.Split(fileName, rootPath)
+	// fileToEval := filepath.Base(fileToEvalList[0])
+	// if len(fileToEvalList) > 1 {
+	// 	fileToEval = filepath.Base(fileToEvalList[1])
+	// }
 	_, err := intp.EvalPath(path.Base(file))
 	if err != nil {
 		return y, err
@@ -492,7 +485,7 @@ func (i *GoMacroInterpreter) Eval(expr string) (string, error) {
 
 	rStr := []string{}
 	for _, v := range resp_ {
-		rStr = append(rStr, fmt.Sprintf("%+v", v.ReflectValue()))
+		rStr = append(rStr, pretty.Sprintf("%+v", v.ReflectValue()))
 	}
 
 	if len(rStr) > 1 {
