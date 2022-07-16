@@ -12,17 +12,15 @@ import (
 	"strings"
 
 	"github.com/cosmos72/gomacro/fast"
-	"github.com/cosmos72/gomacro/xreflect"
 	"github.com/gookit/color"
 	"github.com/kr/pretty"
-	"github.com/samber/lo"
 	"github.com/spf13/cobra"
-	"github.com/switchupcb/yaegi/interp"
-	"github.com/switchupcb/yaegi/stdlib"
 	"github.com/tliron/glsp"
 	protocol "github.com/tliron/glsp/protocol_3_16"
 	"github.com/tliron/glsp/server"
 	"github.com/tliron/kutil/logging"
+	"github.com/traefik/yaegi/interp"
+	"github.com/traefik/yaegi/stdlib"
 
 	// Must include a backend implementation. See kutil's logging/ for other options.
 	simple "github.com/tliron/kutil/logging/simple"
@@ -94,13 +92,11 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 		panic(err)
 	}
 
-	// intp := interp.New(interp.Options{
-	// 	GoPath:               os.Getenv("GOPATH"),
-	// 	SourcecodeFilesystem: os.DirFS(rootPath),
-	// })
-	// intp.Use(stdlib.Symbols)
-	intp := fast.New()
-	intp.ImportPackage(".", rootPath)
+	intp := interp.New(interp.Options{
+		GoPath:               os.Getenv("GOPATH"),
+		SourcecodeFilesystem: os.DirFS(rootPath),
+	})
+	intp.Use(stdlib.Symbols)
 
 	for pkgName, packageNode := range d {
 		_ = pkgName
@@ -108,16 +104,16 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 			// Evaluate the current file so that the comments can refer to the package
 			// pretty.Println(strings.Split(fileName, rootPath), fileName, rootPath)
 
-			// fileToEvalList := strings.Split(fileName, rootPath)
-			// fileToEval := filepath.Base(fileToEvalList[0])
-			// if len(fileToEvalList) > 1 {
-			// 	fileToEval = filepath.Base(fileToEvalList[1])
-			// }
+			fileToEvalList := strings.Split(fileName, rootPath)
+			fileToEval := filepath.Base(fileToEvalList[0])
+			if len(fileToEvalList) > 1 {
+				fileToEval = filepath.Base(fileToEvalList[1])
+			}
 
-			// _, err := intp.EvalPath(fileToEval)
-			// if err != nil {
-			// 	panic(err)
-			// }
+			_, err := intp.EvalPath(fileToEval)
+			if err != nil {
+				panic(err)
+			}
 
 			for _, comment := range astFile.Comments {
 				for currCommentLineIndex, commentLine := range comment.List {
@@ -130,20 +126,12 @@ func ParseComments(rootPath string, files []string) []ReportItem {
 					expr := strings.TrimPrefix(commentLine.Text, "// >>> ")
 					report.Expr = expr
 
-					resp, _ := intp.Eval(expr)
-					// if err != nil {
-					// 	panic(err)
-					// }
-
-					report.Current = strings.Join(lo.Map(resp, func(a xreflect.Value, i int) string {
-						return fmt.Sprint(a.ReflectValue())
-					}), ",")
-					if len(resp) > 1 {
-						report.Current = "(" + report.Current + ")"
+					resp, err := intp.Eval(expr)
+					if err != nil {
+						panic(err)
 					}
 
-					// report.Current = fmt.Sprint(resp)
-					fmt.Println(expr, report.Current)
+					report.Current = fmt.Sprint(resp)
 					nextLineResponse := "// " + report.Current
 
 					if len(comment.List) <= (currCommentLineIndex + 1) {
@@ -213,13 +201,15 @@ func main() {
 	}
 	rootCmd.AddCommand(fmtCmd)
 
+	interpreter := &GoMacroInterpreter{}
+
 	lspCmd := &cobra.Command{
 		Use:   "lsp",
 		Short: "lsp new",
 		Run: func(cmd *cobra.Command, args []string) {
 			const lsName = "doctests"
 			backend := simple.NewBackend()
-			backend.Configure(1, nil)
+			backend.Configure(1, strPtr("/Users/tonyalaribe/doctest.log"))
 			logging.SetBackend(backend)
 
 			handler = protocol.Handler{
@@ -267,10 +257,21 @@ func main() {
 							Send()
 					}
 					if params.Command == "codelens.evaluate" {
-						edits := resolveLensEdit(params.Arguments[0].(string), params.Arguments[1].(string))
 						if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
-							m.Set("message", "WorkspaceExecuteCommand").
+							m.Set("message", "PRE - RESOLVE LensEdit  WorkspaceExecuteCommand").
+								Set("req", pretty.Sprint(params)).
+								Send()
+						}
+						edits := resolveLensEdit(params.Arguments[0].(string), params.Arguments[1].(string), interpreter)
+						if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
+							m.Set("message", "POST WorkspaceExecuteCommand").
 								Set("edits", pretty.Sprint(edits)).
+								Send()
+						}
+						if m := logging.NewMessage([]string{"engine", "parser"}, logging.Info, 0); m != nil {
+							m.Set("message", "RESOLVE LensEdit  WorkspaceExecuteCommand").
+								Set("req", pretty.Sprint(params)).
+								Set("edits", edits).
 								Send()
 						}
 						context.Notify(protocol.ServerWorkspaceApplyEdit, protocol.ApplyWorkspaceEditParams{
@@ -333,52 +334,28 @@ func parseFileAndReturnCodeLenses(file string) []protocol.CodeLens {
 	return codelenses
 }
 
-func resolveLensEdit(file string, cmdLine string) protocol.WorkspaceEdit {
+func resolveLensEdit(file string, cmdLine string, intp interpreter) protocol.WorkspaceEdit {
 	fset := token.NewFileSet() // positions are relative to fset
 	d, err := parser.ParseFile(fset, file, nil, parser.ParseComments)
 	if err != nil {
 		panic(err)
 	}
 
-	intp := interp.New(interp.Options{
-		// GoCache: "/Users/tonyalaribe/Library/Caches/go-build",
-		GoPath: "/Users/tonyalaribe/go",
-		// GoPath:               os.Getenv("GOPATH"),
-		// GoCache:              os.Getenv("GOCACHE"),
-		// GoToolDir:            build.ToolDir,
-		SourcecodeFilesystem: os.DirFS(path.Dir(file)),
-	})
-	intp.Use(stdlib.Symbols)
-
-	_, err = intp.EvalPath(path.Base(file))
-	if err != nil {
-		panic(err)
-	}
-
-	// intp := fast.New()
-	// intp.ImportPackage("doctester", path.Dir(file))
-
 	textEdits := []protocol.TextEdit{}
 	for _, commentG := range d.Comments {
 		for idx, comment := range commentG.List {
 			if strings.HasPrefix(comment.Text, "// >>>") && (comment.Text == cmdLine) {
 				pos := fset.Position(comment.Pos())
-
-				expr := strings.TrimPrefix(comment.Text, "// >>> ")
-				resp_, err := intp.Eval(expr)
+				_, err := intp.InitFile(file)
 				if err != nil {
 					panic(err)
 				}
-				// resp_, _ := intp.Eval(expr)
 
-				// resp := strings.Join(lo.Map(resp_, func(a xreflect.Value, i int) string {
-				// 	return fmt.Sprint(a.ReflectValue())
-				// }), ",")
-				// if len(resp) > 1 {
-				// 	resp = "(" + resp + ")"
-				// }
-
-				resp := fmt.Sprintf("%+v", resp_)
+				expr := strings.TrimPrefix(comment.Text, "// >>> ")
+				resp, err := intp.Eval(expr)
+				if err != nil {
+					panic(err)
+				}
 
 				if len(commentG.List) <= idx+1 || strings.TrimSpace(commentG.List[idx+1].Text) == "//" || strings.TrimSpace(commentG.List[idx+1].Text) == "// -" {
 					resp2 := "// " + resp + "\n"
@@ -457,4 +434,69 @@ func resolveLensEdit(file string, cmdLine string) protocol.WorkspaceEdit {
 		},
 	}
 	return edit
+}
+
+// *********************************
+// Interpreter interface
+// *********************************
+type interpreter interface {
+	InitFile(file string) (interpreter, error)
+	Eval(expr string) (string, error)
+}
+
+// *********************************
+// Interpreter interface implementation for yaegi
+// *********************************
+type YaegiInterpreter struct {
+	intp *interp.Interpreter
+}
+
+func (y *YaegiInterpreter) InitFile(file string) (interpreter, error) {
+	intp := interp.New(interp.Options{
+		GoPath:               os.Getenv("GOPATH"),
+		SourcecodeFilesystem: os.DirFS(path.Dir(file)),
+	})
+	intp.Use(stdlib.Symbols)
+
+	_, err := intp.EvalPath(path.Base(file))
+	if err != nil {
+		return y, err
+	}
+
+	y.intp = intp
+	return y, nil
+}
+
+func (y *YaegiInterpreter) Eval(expr string) (string, error) {
+	resp_, err := y.intp.Eval(expr)
+	resp := fmt.Sprintf("%+v", resp_)
+	return resp, err
+}
+
+// *********************************
+// Interpreter interface implementation for gomacro
+// *********************************
+type GoMacroInterpreter struct {
+	intp *fast.Interp
+}
+
+func (i *GoMacroInterpreter) InitFile(file string) (interpreter, error) {
+	intp := fast.New()
+	intp.ImportPackage(".", path.Dir(file))
+	i.intp = intp
+	return i, nil
+}
+
+func (i *GoMacroInterpreter) Eval(expr string) (string, error) {
+	resp_, _ := i.intp.Eval(expr)
+
+	rStr := []string{}
+	for _, v := range resp_ {
+		rStr = append(rStr, fmt.Sprintf("%+v", v.ReflectValue()))
+	}
+
+	if len(rStr) > 1 {
+		return fmt.Sprintf("(%s)", strings.Join(rStr, ",")), nil
+	}
+	return strings.Join(rStr, ","), nil
 }

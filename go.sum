@@ -2,6 +2,8 @@ github.com/TobiasYin/go-lsp v0.0.0-20220223105953-c4c503a4442e h1:64nAGihJy4YnWo
 github.com/TobiasYin/go-lsp v0.0.0-20220223105953-c4c503a4442e/go.mod h1:wcol2p6rdHzKIPn6+I4LL9jv6BBkBklZGZsrZ15wkgU=
 github.com/cosmos72/gomacro v0.0.0-20220625063834-52f671458705 h1:01bk3jf3Ze+wTq6eVFnDuAmKbRVqKFyM52xZC+bjPLE=
 github.com/cosmos72/gomacro v0.0.0-20220625063834-52f671458705/go.mod h1:Mwa4/4mEA2GOpd7APzViPlyDF1iuBYypf4F6TydYd6o=
+github.com/cosmos72/gomacro v0.0.0-20220702114119-031290e3ea0e h1:UpOl8jDoOK9Cmy+H5m6JJhKI2hhhmaIewNrD11jtFog=
+github.com/cosmos72/gomacro v0.0.0-20220702114119-031290e3ea0e/go.mod h1:Mwa4/4mEA2GOpd7APzViPlyDF1iuBYypf4F6TydYd6o=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -113,6 +115,8 @@ golang.org/x/sys v0.0.0-20211019181941-9d821ace8654/go.mod h1:oPkhp1MJrh7nUepCBc
 golang.org/x/sys v0.0.0-20211117180635-dee7805ff2e1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20220513210249-45d2b4557a2a h1:N2T1jUrTQE9Re6TFF5PhvEHXHCguynGhKjWVsIUt5cY=
 golang.org/x/sys v0.0.0-20220513210249-45d2b4557a2a/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 h1:0A+M6Uqn+Eje4kHMK80dtF3JCXC4ykBgQG4Fe06QRhQ=
+golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20220526004731-065cf7ba2467 h1:CBpWXWQpIRjzmkkA+M7q9Fqnwd2mZr3AFqexg8YTfoM=
 golang.org/x/term v0.0.0-20220526004731-065cf7ba2467/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
