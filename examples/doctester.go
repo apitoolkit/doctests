@@ -30,7 +30,7 @@ func XWithError(a string) (string, error) {
 
 // UseExternalImport ...
 // >>> UseExternalImport("world", 25)
-// doctester.T{V:"world", I:50}
+// examples.T{V:"world", I:50}
 //
 func UseExternalImport(bl string, i int) string {
 	return pretty.Sprint(SubtractT(bl, i))
