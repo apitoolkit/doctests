@@ -10,10 +10,12 @@ import (
 
 // Add adds two numbers
 // >>> Add(2,3)
-// 5
+// WAS 5
+// NOW -1
 //
 // >>> Add(-1,5)
-// 4
+// WAS 4
+// NOW -6
 //
 // >>> Add(1,5)
 // 6
