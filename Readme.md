@@ -5,6 +5,10 @@ It is similar in spirit to the [popular Python module with the same name](https:
 
 ## Getting Started
 
+
+https://github.com/apitoolkit/doctests/assets/6564482/e94dbbbf-224f-4c52-9ad6-36cc3767e645
+
+
 ### Installation
 
 You can install Doctests via go modules via:
